@@ -1,0 +1,220 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Play Color Confusion, a free color reaction brain game. Can you identify the ink color?">
+<title>Color Confusion — Trust Your Eyes?</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;min-height:100vh;padding:20px;
+ display:flex;align-items:center;justify-content:center;
+ font-family:Arial,sans-serif;color:#fff;
+ background:radial-gradient(circle at top,#29234e,#111323 65%)
+}
+.game{width:100%;max-width:520px;text-align:center}
+h1{font-size:clamp(2rem,7vw,3rem);margin:0 0 8px}
+.subtitle{color:#bfc2df;margin:0 0 24px}
+.panel{
+ padding:24px;border-radius:22px;background:#ffffff0c;
+ border:1px solid #ffffff20;box-shadow:0 18px 50px #0005
+}
+.stats{display:flex;gap:10px;margin-bottom:18px}
+.stat{flex:1;padding:12px 4px;border-radius:12px;background:#ffffff0c}
+.stat small{display:block;color:#bfc2df;margin-bottom:6px}
+.stat strong{font-size:1.4rem}
+.instruction{color:#d4d5ed;font-size:.95rem}
+.word{
+ font-size:clamp(3rem,13vw,5.5rem);font-weight:900;
+ letter-spacing:3px;margin:28px 0;padding:24px 4px;
+ border-radius:18px;background:#0002;overflow-wrap:anywhere
+}
+.timer-wrap{height:8px;background:#ffffff20;border-radius:9px;overflow:hidden}
+.timer-bar{height:100%;width:100%;background:#b59cff;transition:width .1s linear}
+.answers{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:20px}
+.answer{
+ border:2px solid #ffffff20;border-radius:13px;padding:16px 8px;
+ color:white;font-size:1rem;font-weight:bold;cursor:pointer;
+ background:#ffffff0c;transition:transform .12s,background .12s
+}
+.answer:active{transform:scale(.96)}
+.answer:disabled{cursor:default;opacity:.7}
+.status{min-height:28px;margin-top:17px;font-weight:bold}
+.primary{
+ width:100%;padding:15px;border:0;border-radius:12px;
+ background:#b59cff;color:#19142d;font-size:1rem;
+ font-weight:bold;cursor:pointer;margin-top:15px
+}
+.hidden{display:none!important}
+.footer{color:#898daa;font-size:.8rem;margin-top:20px}
+</style>
+</head>
+<body>
+<main class="game">
+ <h1>🎨 Color Confusion</h1>
+ <p class="subtitle">Your brain will try to trick you!</p>
+
+ <section class="panel">
+  <div class="stats">
+   <div class="stat"><small>⭐ Score</small><strong id="score">0</strong></div>
+   <div class="stat"><small>🔥 Streak</small><strong id="streak">0</strong></div>
+   <div class="stat"><small>🏆 Best</small><strong id="best">0</strong></div>
+  </div>
+
+  <p class="instruction">Choose the <strong>INK COLOR</strong>, not the word!</p>
+  <div class="word" id="word">BLUE</div>
+
+  <div class="timer-wrap"><div class="timer-bar" id="bar"></div></div>
+  <div class="answers" id="answers"></div>
+  <div class="status" id="status" aria-live="polite">Ready? Start the game!</div>
+  <button class="primary" id="start">START GAME ▶</button>
+  <button class="primary hidden" id="share">SHARE MY SCORE 📲</button>
+ </section>
+ <p class="footer">Fast eyes. Calm brain. Don't trust the word!</p>
+</main>
+
+<script>
+const COLORS=[
+ {name:"RED",hex:"#ff4d67"},
+ {name:"BLUE",hex:"#42a5ff"},
+ {name:"GREEN",hex:"#43e08c"},
+ {name:"YELLOW",hex:"#ffe45c"},
+ {name:"PURPLE",hex:"#bd83ff"},
+ {name:"ORANGE",hex:"#ff9c43"}
+];
+
+const $=id=>document.getElementById(id);
+const wordEl=$("word"),answersEl=$("answers"),statusEl=$("status"),bar=$("bar");
+
+let score=0,streak=0,best=Number(localStorage.getItem("colorConfusionBest")||0);
+let playing=false,roundLocked=false,timeLeft=30,lastColor=-1;
+let timer=null,roundTimer=null;
+const GAME_LENGTH=30;
+
+$("best").textContent=best;
+
+function shuffle(arr){
+ const result=[...arr];
+ for(let i=result.length-1;i>0;i--){
+  const j=Math.floor(Math.random()*(i+1));
+  [result[i],result[j]]=[result[j],result[i]];
+ }
+ return result;
+}
+
+function updateStats(){
+ $("score").textContent=score;
+ $("streak").textContent=streak;
+ $("best").textContent=best;
+}
+
+function newRound(){
+ if(!playing)return;
+ roundLocked=false;
+
+ // Pick a different ink color from the previous round when possible.
+ let inkIndex=Math.floor(Math.random()*COLORS.length);
+ if(inkIndex===lastColor)inkIndex=(inkIndex+1+Math.floor(Math.random()*(COLORS.length-1)))%COLORS.length;
+ lastColor=inkIndex;
+
+ // The written word is deliberately different from the ink color.
+ let wordIndex=Math.floor(Math.random()*(COLORS.length-1));
+ if(wordIndex>=inkIndex)wordIndex++;
+
+ wordEl.textContent=COLORS[wordIndex].name;
+ wordEl.style.color=COLORS[inkIndex].hex;
+
+ answersEl.innerHTML="";
+ shuffle(COLORS).forEach(color=>{
+  const button=document.createElement("button");
+  button.className="answer";
+  button.textContent=color.name;
+  button.style.borderColor=color.hex+"55";
+  button.addEventListener("click",()=>chooseAnswer(color.name,inkIndex));
+  answersEl.appendChild(button);
+ });
+ statusEl.textContent="Which color is the ink?";
+}
+
+function chooseAnswer(answer,correctIndex){
+ if(!playing||roundLocked)return;
+ roundLocked=true;
+
+ if(answer===COLORS[correctIndex].name){
+  score+=10;
+  streak++;
+  statusEl.textContent="✅ Correct! +10 points";
+  statusEl.style.color="#72f0a5";
+ }else{
+  streak=0;
+  statusEl.textContent="❌ Wrong! Ink was "+COLORS[correctIndex].name;
+  statusEl.style.color="#ff8796";
+ }
+
+ if(score>best){
+  best=score;
+  localStorage.setItem("colorConfusionBest",String(best));
+ }
+ updateStats();
+ [...answersEl.children].forEach(button=>button.disabled=true);
+
+ clearTimeout(roundTimer);
+ roundTimer=setTimeout(()=>{
+  if(playing)newRound();
+ },450);
+}
+
+function endGame(){
+ playing=false;
+ clearInterval(timer);
+ clearTimeout(roundTimer);
+ [...answersEl.children].forEach(button=>button.disabled=true);
+ $("start").textContent="PLAY AGAIN ↻";
+ $("start").classList.remove("hidden");
+ $("share").classList.remove("hidden");
+ statusEl.style.color="#fff";
+ statusEl.textContent="⏰ Time's up! Final score: "+score;
+ wordEl.textContent="GAME OVER";
+ wordEl.style.color="#fff";
+ bar.style.width="0%";
+ updateStats();
+}
+
+function startGame(){
+ clearInterval(timer);
+ clearTimeout(roundTimer);
+ score=0;streak=0;timeLeft=GAME_LENGTH;
+ playing=true;roundLocked=false;lastColor=-1;
+ $("share").classList.add("hidden");
+ $("start").classList.add("hidden");
+ statusEl.style.color="#fff";
+ updateStats();
+ newRound();
+
+ timer=setInterval(()=>{
+  timeLeft-=0.1;
+  if(timeLeft<0)timeLeft=0;
+  bar.style.width=(timeLeft/GAME_LENGTH*100)+"%";
+  if(timeLeft<=0)endGame();
+ },100);
+}
+
+$("start").addEventListener("click",startGame);
+$("share").addEventListener("click",async()=>{
+ const message="I scored "+score+" points in Color Confusion 🎨 Can you beat my score?";
+ try{
+  if(navigator.share){
+   await navigator.share({title:"Color Confusion",text:message});
+  }else{
+   await navigator.clipboard.writeText(message);
+   statusEl.textContent="Score copied! Challenge a friend.";
+  }
+ }catch(e){
+  statusEl.textContent=message;
+ }
+});
+</script>
+</body>
+</html>
